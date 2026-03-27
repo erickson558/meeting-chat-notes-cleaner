@@ -25,7 +25,10 @@ class AppConfig:
     window_height: int = 720
     window_x: int | None = None
     window_y: int | None = None
+    last_status_key: str = ""
     last_status: str = ""
+    last_source_line_count: int | None = None
+    last_cleaned_line_count: int | None = None
     last_run_summary: str = ""
 
     def apply_defaults(self) -> "AppConfig":
@@ -68,6 +71,12 @@ class AppConfig:
         )
         config.window_x = _coerce_optional_int(filtered_payload.get("window_x"))
         config.window_y = _coerce_optional_int(filtered_payload.get("window_y"))
+        config.last_source_line_count = _coerce_optional_non_negative_int(
+            filtered_payload.get("last_source_line_count")
+        )
+        config.last_cleaned_line_count = _coerce_optional_non_negative_int(
+            filtered_payload.get("last_cleaned_line_count")
+        )
 
         return config.apply_defaults()
 
@@ -99,6 +108,18 @@ def _coerce_optional_int(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _coerce_optional_non_negative_int(value: Any) -> int | None:
+    """Return a non-negative integer or None for invalid data."""
+
+    if value in (None, ""):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
 
 
 class ConfigManager:

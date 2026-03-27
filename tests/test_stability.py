@@ -5,9 +5,11 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+import subprocess
+import sys
 
 from meeting_chat_notes_cleaner.config import ConfigManager
-from meeting_chat_notes_cleaner.gui import sanitize_auto_close_seconds
+from meeting_chat_notes_cleaner.gui import extract_summary_counts, sanitize_auto_close_seconds
 from meeting_chat_notes_cleaner.logging_utils import close_logging, configure_logging
 
 
@@ -80,6 +82,44 @@ class GuiParsingTests(unittest.TestCase):
         self.assertEqual(sanitize_auto_close_seconds("", fallback=60), 60)
         self.assertEqual(sanitize_auto_close_seconds("abc", fallback=60), 60)
         self.assertEqual(sanitize_auto_close_seconds("-5", fallback=60), 60)
+
+    def test_extract_summary_counts_supports_both_languages(self) -> None:
+        """Legacy localized summaries should remain translatable."""
+
+        self.assertEqual(
+            extract_summary_counts("Líneas originales: 605 | líneas limpias: 410"),
+            (605, 410),
+        )
+        self.assertEqual(
+            extract_summary_counts("Source lines: 605 | cleaned lines: 410"),
+            (605, 410),
+        )
+        self.assertIsNone(extract_summary_counts("No summary available"))
+
+
+class CliTests(unittest.TestCase):
+    """Verify CLI failures stay user-friendly and stable."""
+
+    def test_missing_input_file_returns_clean_error(self) -> None:
+        """Missing source files should not print a Python traceback."""
+
+        project_dir = Path(__file__).resolve().parents[1]
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(project_dir / "meeting_chat_notes_cleaner.py"),
+                "--input",
+                "does_not_exist.txt",
+            ],
+            cwd=project_dir,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Error: input file not found:", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
 
 
 if __name__ == "__main__":

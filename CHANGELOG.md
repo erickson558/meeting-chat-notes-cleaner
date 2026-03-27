@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## V0.0.3 - 2026-03-27
+
+- Fixed CLI error handling so missing input files return a clean user-facing message instead of a Python traceback
+- Fixed GUI language switching so persisted status and successful summary text are re-rendered in the active language
+- Added compatibility logic for legacy configs that only stored localized summary text
+- Added regression coverage for CLI failure handling and localized summary parsing
+
 ## V0.0.2 - 2026-03-27
 
 - Fixed GUI countdown field validation so invalid edits no longer trigger Tkinter callback errors

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from meeting_chat_notes_cleaner.cleaner import clean_notes_file
@@ -64,6 +65,14 @@ def main() -> int:
             f"Lineas limpias: {result.cleaned_line_count}"
         )
         return 0
+    except FileNotFoundError:
+        logger.error("Input file not found: %s", input_path)
+        print(f'Error: input file not found: "{input_path}"', file=sys.stderr)
+        return 1
+    except Exception as exc:
+        logger.exception("Unhandled CLI error")
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
     finally:
         close_logging(logger)
 

@@ -6,6 +6,7 @@ import threading
 import tkinter as tk
 from pathlib import Path
 from queue import Empty, Queue
+import re
 from tkinter import filedialog, ttk
 
 from .cleaner import CleaningResult, clean_notes_file
@@ -29,6 +30,27 @@ def sanitize_auto_close_seconds(raw_value: str, fallback: int = 60) -> int:
     return parsed if parsed > 0 else fallback
 
 
+def extract_summary_counts(summary_text: str) -> tuple[int, int] | None:
+    """Extract line counts from legacy localized summary text.
+
+    Older configs stored already-translated summary strings. This helper allows
+    the current UI to recover the numeric data and re-render it in the active
+    language.
+    """
+
+    patterns = (
+        r"^Líneas originales:\s*(\d+)\s*\|\s*líneas limpias:\s*(\d+)\s*$",
+        r"^Source lines:\s*(\d+)\s*\|\s*cleaned lines:\s*(\d+)\s*$",
+    )
+
+    for pattern in patterns:
+        match = re.match(pattern, summary_text.strip(), re.IGNORECASE)
+        if match:
+            return int(match.group(1)), int(match.group(2))
+
+    return None
+
+
 class MeetingChatNotesCleanerApp(tk.Tk):
     """Desktop application with persistent settings and a responsive UI."""
 
@@ -37,6 +59,7 @@ class MeetingChatNotesCleanerApp(tk.Tk):
 
         self.config_manager = ConfigManager()
         self.app_config = self.config_manager.load()
+        self._backfill_legacy_summary_state()
         self.config_manager.save(self.app_config)
         self.logger = configure_logging()
         self.logger.info("Desktop UI started. Version=%s", APP_VERSION)
@@ -73,6 +96,28 @@ class MeetingChatNotesCleanerApp(tk.Tk):
 
         if self.auto_start_var.get():
             self.after(500, self.run_cleaner)
+
+    def _backfill_legacy_summary_state(self) -> None:
+        """Recover structured last-run data from older config files.
+
+        This keeps language switching consistent even if the previous app
+        version only stored a localized summary string.
+        """
+
+        if (
+            self.app_config.last_source_line_count is not None
+            and self.app_config.last_cleaned_line_count is not None
+        ):
+            return
+
+        parsed_counts = extract_summary_counts(self.app_config.last_run_summary)
+        if not parsed_counts:
+            return
+
+        self.app_config.last_source_line_count = parsed_counts[0]
+        self.app_config.last_cleaned_line_count = parsed_counts[1]
+        if not self.app_config.last_status_key and self.app_config.last_status:
+            self.app_config.last_status_key = "status_success"
 
     def _configure_window(self) -> None:
         """Apply the initial window layout and saved geometry."""
@@ -413,12 +458,7 @@ class MeetingChatNotesCleanerApp(tk.Tk):
         self.exit_button.config(text=self._t("exit"))
         self.summary_title_label.config(text=self._t("run_summary"))
 
-        if not self.status_var.get():
-            self.status_var.set(self._t("status_ready"))
-        if self.app_config.last_run_summary:
-            self.summary_var.set(self.app_config.last_run_summary)
-        elif not self.summary_var.get():
-            self.summary_var.set(self._t("summary_idle"))
+        self._refresh_runtime_texts()
 
         self._build_menu()
 
@@ -431,6 +471,34 @@ class MeetingChatNotesCleanerApp(tk.Tk):
         """Read translated text for the current language."""
 
         return translate(self.language_var.get(), key, **kwargs)
+
+    def _refresh_runtime_texts(self) -> None:
+        """Render status and summary using the current language.
+
+        Structured state is preferred so the UI can translate cleanly after a
+        language change.
+        """
+
+        if self.app_config.last_status_key:
+            self.status_var.set(self._t(self.app_config.last_status_key))
+        elif not self.status_var.get():
+            self.status_var.set(self._t("status_ready"))
+
+        if (
+            self.app_config.last_source_line_count is not None
+            and self.app_config.last_cleaned_line_count is not None
+        ):
+            self.summary_var.set(
+                self._t(
+                    "summary_done",
+                    source=self.app_config.last_source_line_count,
+                    cleaned=self.app_config.last_cleaned_line_count,
+                )
+            )
+        elif self.app_config.last_run_summary:
+            self.summary_var.set(self.app_config.last_run_summary)
+        elif not self.summary_var.get():
+            self.summary_var.set(self._t("summary_idle"))
 
     def _on_language_combo_change(self, _event: object) -> None:
         """Map combobox labels back to language codes."""
@@ -519,6 +587,12 @@ class MeetingChatNotesCleanerApp(tk.Tk):
         if not input_path.exists():
             self.status_var.set(self._t("status_error"))
             self.summary_var.set(f"{self._t('input_missing')} {input_path}")
+            self.app_config.last_status_key = "status_error"
+            self.app_config.last_status = self.status_var.get()
+            self.app_config.last_source_line_count = None
+            self.app_config.last_cleaned_line_count = None
+            self.app_config.last_run_summary = self.summary_var.get()
+            self.config_manager.save(self.app_config)
             self.logger.warning("Input file not found: %s", input_path)
             return
 
@@ -574,6 +648,9 @@ class MeetingChatNotesCleanerApp(tk.Tk):
         )
 
         self.app_config.last_status = self.status_var.get()
+        self.app_config.last_status_key = "status_success"
+        self.app_config.last_source_line_count = result.source_line_count
+        self.app_config.last_cleaned_line_count = result.cleaned_line_count
         self.app_config.last_run_summary = self.summary_var.get()
         self.config_manager.save(self.app_config)
 
@@ -586,7 +663,10 @@ class MeetingChatNotesCleanerApp(tk.Tk):
         self.run_button.state(["!disabled"])
         self.status_var.set(self._t("status_error"))
         self.summary_var.set(str(error))
+        self.app_config.last_status_key = "status_error"
         self.app_config.last_status = self.status_var.get()
+        self.app_config.last_source_line_count = None
+        self.app_config.last_cleaned_line_count = None
         self.app_config.last_run_summary = self.summary_var.get()
         self.config_manager.save(self.app_config)
 
