@@ -1,0 +1,43 @@
+# Ignore everything by default because this working folder also contains
+# unrelated personal files that should never be published to GitHub.
+*
+
+# Track repository metadata and documentation.
+!.gitignore
+!README.md
+!CHANGELOG.md
+!LICENSE
+!requirements.txt
+
+# Track project entry points and build helpers.
+!build_exe.py
+!clean_notes.bat
+!meeting_chat_notes_cleaner.py
+!meeting_chat_notes_cleaner_app.py
+!server_green_clean_energy_eco_ecology_icon_185999.ico
+
+# Track the Python package source.
+!meeting_chat_notes_cleaner/
+!meeting_chat_notes_cleaner/**
+
+# Track GitHub workflow automation.
+!.github/
+!.github/workflows/
+!.github/workflows/**
+
+# Ignore generated Python files and build artifacts.
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.exe
+build/
+dist/
+*.spec
+
+# Ignore local runtime data and user content.
+config.json
+log.txt
+meeting_chat_notes_cleaner.log
+notes.txt
+notes_clean.txt

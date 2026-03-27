@@ -1,0 +1,85 @@
+name: Build And Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Validate source files
+        shell: pwsh
+        run: |
+          python -m compileall meeting_chat_notes_cleaner.py meeting_chat_notes_cleaner_app.py meeting_chat_notes_cleaner
+
+      - name: Build Windows executable
+        shell: pwsh
+        run: |
+          python build_exe.py
+
+      - name: Capture release metadata
+        id: meta
+        shell: pwsh
+        run: |
+          $version = python build_exe.py --print-version
+          $artifact = python build_exe.py --print-output-path
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "artifact=$artifact" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Create tag if missing
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.meta.outputs.version }}"
+          $existingTag = git tag --list $tag
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if ([string]::IsNullOrWhiteSpace($existingTag)) {
+            git tag $tag
+            git push origin $tag
+          }
+
+      - name: Create or update GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ steps.meta.outputs.version }}"
+          $artifact = "${{ steps.meta.outputs.artifact }}"
+
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $artifact --clobber
+          }
+          else {
+            gh release create $tag $artifact --title $tag --generate-notes
+          }
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-executable-${{ steps.meta.outputs.version }}
+          path: ${{ steps.meta.outputs.artifact }}
