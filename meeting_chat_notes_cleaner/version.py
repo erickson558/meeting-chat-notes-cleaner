@@ -2,7 +2,7 @@
 
 APP_NAME = "Meeting Chat Notes Cleaner"
 APP_SLUG = "meeting-chat-notes-cleaner"
-APP_VERSION = "V0.0.1"
+APP_VERSION = "V0.0.2"
 APP_EXECUTABLE_NAME = f"MeetingChatNotesCleaner-{APP_VERSION}"
 ICON_FILENAME = "server_green_clean_energy_eco_ecology_icon_185999.ico"
 CREATED_BY = "Synyster Rick"

@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 
 from meeting_chat_notes_cleaner.cleaner import clean_notes_file
-from meeting_chat_notes_cleaner.logging_utils import configure_logging
+from meeting_chat_notes_cleaner.logging_utils import close_logging, configure_logging
 from meeting_chat_notes_cleaner.paths import (
     get_default_input_path,
     get_default_output_path,
@@ -55,14 +55,17 @@ def main() -> int:
     log_path = Path(args.log).expanduser().resolve()
 
     logger = configure_logging(log_path)
-    result = clean_notes_file(input_path, output_path, logger=logger)
+    try:
+        result = clean_notes_file(input_path, output_path, logger=logger)
 
-    print(f'Archivo actualizado: "{result.output_path}"')
-    print(
-        f"Lineas originales: {result.source_line_count} | "
-        f"Lineas limpias: {result.cleaned_line_count}"
-    )
-    return 0
+        print(f'Archivo actualizado: "{result.output_path}"')
+        print(
+            f"Lineas originales: {result.source_line_count} | "
+            f"Lineas limpias: {result.cleaned_line_count}"
+        )
+        return 0
+    finally:
+        close_logging(logger)
 
 
 if __name__ == "__main__":

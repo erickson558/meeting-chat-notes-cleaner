@@ -2,7 +2,7 @@
 
 Meeting Chat Notes Cleaner is a desktop and command-line Python application that removes chat metadata from exported class or meeting transcripts and keeps the useful study notes.
 
-Current version: `V0.0.1`
+Current version: `V0.0.2`
 
 ## Features
 
@@ -97,7 +97,7 @@ python build_exe.py
 
 Expected result:
 
-- A file named `MeetingChatNotesCleaner-V0.0.1.exe`
+- A file named `MeetingChatNotesCleaner-V0.0.2.exe`
 - The executable is created in the same folder as the Python source files
 - The executable runs without opening an extra console window
 

@@ -19,6 +19,8 @@
 # Track the Python package source.
 !meeting_chat_notes_cleaner/
 !meeting_chat_notes_cleaner/**
+!tests/
+!tests/**
 
 # Track GitHub workflow automation.
 !.github/

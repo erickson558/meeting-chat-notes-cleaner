@@ -11,8 +11,22 @@ from tkinter import filedialog, ttk
 from .cleaner import CleaningResult, clean_notes_file
 from .config import AppConfig, ConfigManager
 from .i18n import TRANSLATIONS, translate
-from .logging_utils import configure_logging
+from .logging_utils import close_logging, configure_logging
 from .version import APP_NAME, APP_VERSION
+
+
+def sanitize_auto_close_seconds(raw_value: str, fallback: int = 60) -> int:
+    """Return a safe positive integer for the auto-close countdown.
+
+    The GUI allows transient editing states, so blank or non-numeric values
+    must not raise exceptions inside Tk callbacks.
+    """
+
+    try:
+        parsed = int(str(raw_value).strip())
+    except (TypeError, ValueError):
+        return fallback
+    return parsed if parsed > 0 else fallback
 
 
 class MeetingChatNotesCleanerApp(tk.Tk):
@@ -40,7 +54,9 @@ class MeetingChatNotesCleanerApp(tk.Tk):
         self.output_var = tk.StringVar(value=self.app_config.output_path)
         self.auto_start_var = tk.BooleanVar(value=self.app_config.auto_start)
         self.auto_close_var = tk.BooleanVar(value=self.app_config.auto_close)
-        self.auto_close_seconds_var = tk.IntVar(value=self.app_config.auto_close_seconds)
+        self.auto_close_seconds_var = tk.StringVar(
+            value=str(self.app_config.auto_close_seconds)
+        )
         self.status_var = tk.StringVar()
         self.summary_var = tk.StringVar()
         self.countdown_var = tk.StringVar(value="")
@@ -283,8 +299,14 @@ class MeetingChatNotesCleanerApp(tk.Tk):
             to=3600,
             width=10,
             textvariable=self.auto_close_seconds_var,
+            validate="key",
+            validatecommand=(self.register(self._validate_auto_close_seconds), "%P"),
         )
         self.auto_close_seconds_spin.grid(row=1, column=1, sticky="w", pady=(14, 0))
+        self.auto_close_seconds_spin.bind(
+            "<FocusOut>",
+            lambda _event: self._normalize_auto_close_seconds_field(),
+        )
 
         actions_frame = ttk.Frame(card, style="Card.TFrame")
         actions_frame.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(20, 8))
@@ -430,19 +452,33 @@ class MeetingChatNotesCleanerApp(tk.Tk):
     def _sync_config_from_vars(self) -> None:
         """Push the current Tk variable values into the in-memory config."""
 
-        seconds = self.auto_close_seconds_var.get()
-        if seconds < 1:
-            seconds = 60
-            self.auto_close_seconds_var.set(seconds)
+        seconds = sanitize_auto_close_seconds(
+            self.auto_close_seconds_var.get(),
+            fallback=self.app_config.auto_close_seconds,
+        )
 
         self.app_config.language = self.language_var.get()
         self.app_config.input_path = self.input_var.get().strip()
         self.app_config.output_path = self.output_var.get().strip()
         self.app_config.auto_start = bool(self.auto_start_var.get())
         self.app_config.auto_close = bool(self.auto_close_var.get())
-        self.app_config.auto_close_seconds = int(seconds)
+        self.app_config.auto_close_seconds = seconds
         self.config_manager.save(self.app_config)
         self.logger.info("Settings saved to config.json")
+
+    def _validate_auto_close_seconds(self, proposed_value: str) -> bool:
+        """Allow only digits or a temporary blank value while editing."""
+
+        return proposed_value == "" or proposed_value.isdigit()
+
+    def _normalize_auto_close_seconds_field(self) -> None:
+        """Rewrite the field with a safe value after user editing finishes."""
+
+        normalized = sanitize_auto_close_seconds(
+            self.auto_close_seconds_var.get(),
+            fallback=self.app_config.auto_close_seconds,
+        )
+        self.auto_close_seconds_var.set(str(normalized))
 
     def _browse_input(self) -> None:
         """Open a file picker for the source notes file."""
@@ -476,6 +512,7 @@ class MeetingChatNotesCleanerApp(tk.Tk):
         if self.worker_thread and self.worker_thread.is_alive():
             return
 
+        self._normalize_auto_close_seconds_field()
         input_path = Path(self.input_var.get().strip()).expanduser()
         output_path = Path(self.output_var.get().strip()).expanduser()
 
@@ -556,7 +593,11 @@ class MeetingChatNotesCleanerApp(tk.Tk):
     def _start_auto_close_countdown(self) -> None:
         """Start a visible countdown in the status bar before closing."""
 
-        self.auto_close_remaining = max(1, int(self.auto_close_seconds_var.get()))
+        self._normalize_auto_close_seconds_field()
+        self.auto_close_remaining = sanitize_auto_close_seconds(
+            self.auto_close_seconds_var.get(),
+            fallback=self.app_config.auto_close_seconds,
+        )
         self._tick_auto_close()
 
     def _tick_auto_close(self) -> None:
@@ -630,6 +671,7 @@ class MeetingChatNotesCleanerApp(tk.Tk):
 
         self._cancel_auto_close()
         self._save_geometry()
+        close_logging(self.logger)
         self.destroy()
 
 

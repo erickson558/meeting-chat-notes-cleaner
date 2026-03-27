@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from threading import Lock
+from typing import Any
 
 from .paths import get_config_path, get_default_input_path, get_default_output_path
 
@@ -38,6 +39,38 @@ class AppConfig:
             self.auto_close_seconds = 60
         return self
 
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "AppConfig":
+        """Build config safely from external JSON content.
+
+        Unknown keys are ignored so old or future config files do not crash the
+        application on startup.
+        """
+
+        allowed_keys = {item.name for item in fields(cls)}
+        filtered_payload = {
+            key: value for key, value in payload.items() if key in allowed_keys
+        }
+        config = cls(**filtered_payload)
+
+        # Normalize numeric fields defensively in case the JSON was edited by hand.
+        config.auto_close_seconds = _coerce_positive_int(
+            filtered_payload.get("auto_close_seconds"),
+            default=config.auto_close_seconds,
+        )
+        config.window_width = _coerce_positive_int(
+            filtered_payload.get("window_width"),
+            default=config.window_width,
+        )
+        config.window_height = _coerce_positive_int(
+            filtered_payload.get("window_height"),
+            default=config.window_height,
+        )
+        config.window_x = _coerce_optional_int(filtered_payload.get("window_x"))
+        config.window_y = _coerce_optional_int(filtered_payload.get("window_y"))
+
+        return config.apply_defaults()
+
     def geometry(self) -> str:
         """Return a Tk-compatible geometry string based on saved settings."""
 
@@ -45,6 +78,27 @@ class AppConfig:
         if self.window_x is not None and self.window_y is not None:
             geometry += f"+{self.window_x}+{self.window_y}"
         return geometry
+
+
+def _coerce_positive_int(value: Any, default: int) -> int:
+    """Return a positive integer or a safe default when parsing fails."""
+
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
+
+
+def _coerce_optional_int(value: Any) -> int | None:
+    """Return an integer value or None when parsing is not possible."""
+
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 class ConfigManager:
@@ -65,7 +119,13 @@ class ConfigManager:
         except (OSError, ValueError, TypeError):
             return AppConfig().apply_defaults()
 
-        return AppConfig(**payload).apply_defaults()
+        if not isinstance(payload, dict):
+            return AppConfig().apply_defaults()
+
+        try:
+            return AppConfig.from_dict(payload)
+        except (TypeError, ValueError):
+            return AppConfig().apply_defaults()
 
     def save(self, config: AppConfig) -> None:
         """Persist config atomically enough for local desktop usage."""
